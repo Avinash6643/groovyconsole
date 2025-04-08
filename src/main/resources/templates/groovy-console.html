@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"> <head>
+  <meta charset="UTF-8">
+  <title>Groovy Console</title>
+  <style>
+    /* Your CSS styles */
+    body { font-family: sans-serif; margin: 20px; }
+    textarea, pre { width: 90%; min-height: 150px; font-family: monospace; font-size: 14px; border: 1px solid #ccc; padding: 5px; }
+    textarea { margin-bottom: 10px; }
+    pre { background-color: #f5f5f5; white-space: pre-wrap; word-wrap: break-word; }
+    button { padding: 10px 15px; font-size: 14px; cursor: pointer; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    .error { color: red; font-weight: bold; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>Groovy Script Console</h1>
+
+<div th:if="${error}" class="error" th:text="${error}">Error message placeholder</div>
+
+<form method="post" th:action="@{/groovy/execute}">
+  <label for="script">Groovy Script:</label>
+  <textarea id="script" name="script" rows="10" cols="80" th:text="${script} ?: ''">Enter script here...</textarea>
+  <br/>
+  <button type="submit" th:disabled="${error != null}">Execute Script</button>
+</form>
+
+<hr style="margin: 20px 0;">
+
+<label for="result">Result:</label>
+<pre id="result" th:text="${result} ?: '// Output will appear here'">Result placeholder</pre>
+
+<hr style="margin: 20px 0;">
+<p>
+  <strong>Note:</strong> You can use <code>out.println(...)</code> for standard output and <code>err.println(...)</code> for error output within the script.
+  The Spring Application Context is available via the <code>spring</code> variable (e.g., <code>spring.getBean('beanName')</code>). Use with extreme caution.
+</p>
+<p style="color:red; font-weight:bold;">
+  <strong>SECURITY WARNING:</strong> This console allows arbitrary code execution.
+  DO NOT expose this endpoint publicly or without robust authentication and authorization (e.g., using Spring Security restricted to admin users).
+</p>
+
+</body>
+</html>
