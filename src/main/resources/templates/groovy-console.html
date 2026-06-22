@@ -1,45 +1,561 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"> <head>
-  <meta charset="UTF-8">
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Groovy Console</title>
+
+  <!-- CodeMirror editor (vendored locally so the console works fully offline) -->
+  <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css"/>
+  <link rel="stylesheet" href="/vendor/codemirror/theme/material-darker.css"/>
+
   <style>
-    /* Your CSS styles */
-    body { font-family: sans-serif; margin: 20px; }
-    textarea, pre { width: 90%; min-height: 150px; font-family: monospace; font-size: 14px; border: 1px solid #ccc; padding: 5px; }
-    textarea { margin-bottom: 10px; }
-    pre { background-color: #f5f5f5; white-space: pre-wrap; word-wrap: break-word; }
-    button { padding: 10px 15px; font-size: 14px; cursor: pointer; }
-    label { display: block; margin-bottom: 5px; font-weight: bold; }
-    .error { color: red; font-weight: bold; margin-bottom: 10px; }
+    :root {
+      --bg: #0f1419;
+      --bg-elevated: #161b22;
+      --bg-panel: #1c2128;
+      --border: #2d333b;
+      --text: #e6edf3;
+      --text-dim: #8b949e;
+      --accent: #58a6ff;
+      --accent-strong: #1f6feb;
+      --green: #3fb950;
+      --red: #f85149;
+      --amber: #d29922;
+      --radius: 10px;
+      --mono: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    html[data-theme="light"] {
+      --bg: #f6f8fa;
+      --bg-elevated: #ffffff;
+      --bg-panel: #ffffff;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --text-dim: #656d76;
+      --accent: #0969da;
+      --accent-strong: #0969da;
+      --green: #1a7f37;
+      --red: #cf222e;
+      --amber: #9a6700;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 20px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+    }
+    .brand .logo {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+    }
+    .brand small { color: var(--text-dim); font-weight: 500; font-size: 12px; }
+
+    header .spacer { flex: 1; }
+
+    select, button {
+      font-family: var(--sans);
+      font-size: 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-panel);
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, opacity .15s;
+    }
+    select:hover, button:hover { border-color: var(--accent); }
+
+    button.primary {
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+      color: #fff;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button.primary:disabled { opacity: .55; cursor: not-allowed; filter: none; }
+    button .kbd {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(255,255,255,.18);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    button.icon { padding: 8px 10px; }
+
+    main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg);
+    }
+    #editor-pane { flex: 1 1 55%; }
+    #output-pane { flex: 1 1 45%; }
+
+    .pane-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-dim);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .editor-wrap { flex: 1; min-height: 0; position: relative; }
+    textarea.plain-editor {
+      width: 100%; height: 100%;
+      border: none; outline: none; resize: none;
+      background: var(--bg); color: var(--text);
+      font-family: var(--mono); font-size: 14px; line-height: 1.55;
+      padding: 12px 14px;
+    }
+    .CodeMirror {
+      height: 100% !important;
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    /* status bar */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      font-size: 13px;
+      min-height: 41px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+    .badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .badge.success { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
+    .badge.success .dot { background: var(--green); }
+    .badge.error { color: var(--red); background: color-mix(in srgb, var(--red) 16%, transparent); }
+    .badge.error .dot { background: var(--red); }
+    .badge.idle { color: var(--text-dim); background: color-mix(in srgb, var(--text-dim) 14%, transparent); }
+    .badge.idle .dot { background: var(--text-dim); }
+    .status .meta { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+    .status .meta b { color: var(--text); font-weight: 600; }
+
+    /* tabs */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 10px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab {
+      appearance: none;
+      border: none;
+      background: none;
+      color: var(--text-dim);
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 0;
+    }
+    .tab:hover { color: var(--text); border-color: transparent; }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab .pip {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-dim); opacity: 0;
+    }
+    .tab.has-content .pip { opacity: 1; }
+    .tab[data-tab="error"].has-content .pip { background: var(--red); }
+    .tab[data-tab="stdout"].has-content .pip { background: var(--green); }
+    .tab[data-tab="return"].has-content .pip { background: var(--accent); }
+    .tab[data-tab="stderr"].has-content .pip { background: var(--amber); }
+
+    .output-body { flex: 1; min-height: 0; overflow: auto; }
+    .output-body pre {
+      margin: 0;
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+      min-height: 100%;
+    }
+    pre.error-text { color: var(--red); }
+    pre.return-text .rtype { color: var(--text-dim); }
+
+    .empty {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      color: var(--text-dim);
+      font-size: 13px;
+      text-align: center;
+      padding: 30px;
+      gap: 6px;
+    }
+    .empty svg { opacity: .4; }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    footer {
+      flex-shrink: 0;
+      padding: 7px 20px;
+      background: var(--bg-elevated);
+      border-top: 1px solid var(--border);
+      font-size: 11.5px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    footer .warn { color: var(--amber); font-weight: 600; }
+    footer code {
+      font-family: var(--mono);
+      background: var(--bg-panel);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--text);
+    }
+
+    @media (max-width: 860px) {
+      main { flex-direction: column; }
+      .brand small { display: none; }
+    }
   </style>
 </head>
 <body>
+  <header>
+    <div class="brand">
+      <span class="logo">G</span>
+      <span>Groovy Console <small>Spring Boot</small></span>
+    </div>
+    <div class="spacer"></div>
+    <select id="samples" title="Load a sample script">
+      <option value="">Load sample…</option>
+    </select>
+    <button id="theme-toggle" class="icon" title="Toggle theme">🌙</button>
+    <button id="clear-btn" title="Clear editor">Clear</button>
+    <button id="run-btn" class="primary" title="Run script">
+      <span class="label">▶ Run</span>
+      <span class="kbd">⌘⏎</span>
+    </button>
+  </header>
 
-<h1>Groovy Script Console</h1>
+  <main>
+    <section id="editor-pane" class="pane">
+      <div class="pane-head">Script</div>
+      <div class="editor-wrap">
+        <textarea id="code"></textarea>
+      </div>
+    </section>
 
-<div th:if="${error}" class="error" th:text="${error}">Error message placeholder</div>
+    <section id="output-pane" class="pane">
+      <div class="status">
+        <span id="status-badge" class="badge idle"><span class="dot"></span>Ready</span>
+        <span id="status-time" class="meta"></span>
+        <span class="spacer" style="flex:1"></span>
+        <span id="status-type" class="meta"></span>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="stdout"><span class="pip"></span>Output</button>
+        <button class="tab" data-tab="return"><span class="pip"></span>Return value</button>
+        <button class="tab" data-tab="stderr"><span class="pip"></span>Std error</button>
+        <button class="tab" data-tab="error"><span class="pip"></span>Exception</button>
+      </div>
+      <div class="output-body">
+        <div id="panel-stdout"></div>
+        <div id="panel-return" hidden></div>
+        <div id="panel-stderr" hidden></div>
+        <div id="panel-error" hidden></div>
+      </div>
+    </section>
+  </main>
 
-<form method="post" th:action="@{/groovy/execute}">
-  <label for="script">Groovy Script:</label>
-  <textarea id="script" name="script" rows="10" cols="80" th:text="${script} ?: ''">Enter script here...</textarea>
-  <br/>
-  <button type="submit" th:disabled="${error != null}">Execute Script</button>
-</form>
+  <footer>
+    <span><span class="warn">⚠ Security:</span> this console runs arbitrary code on the server &mdash; never expose it publicly without authentication.</span>
+    <span style="flex:1"></span>
+    <span>Use <code>println</code> for output and <code>err.println</code> for errors.</span>
+  </footer>
 
-<hr style="margin: 20px 0;">
+  <script src="/vendor/codemirror/codemirror.min.js"></script>
+  <script src="/vendor/codemirror/mode/groovy/groovy.min.js"></script>
+  <script src="/vendor/codemirror/addon/edit/matchbrackets.min.js"></script>
+  <script src="/vendor/codemirror/addon/edit/closebrackets.min.js"></script>
 
-<label for="result">Result:</label>
-<pre id="result" th:text="${result} ?: '// Output will appear here'">Result placeholder</pre>
+  <script>
+    // NOTE: every Groovy GString "$" is written as "\$" so JavaScript does not
+    // try to interpolate it inside these backtick (template literal) strings.
+    const SAMPLES = {
+      "Hello, Groovy": `// Groovy basics — the last expression is the return value\ndef name = "Groovy"\nprintln "Hello, \${name}!"\n\ndef squares = (1..5).collect { it * it }\nprintln "Squares: \${squares}"\n\n"Done — see the Return value tab"`,
 
-<hr style="margin: 20px 0;">
-<p>
-  <strong>Note:</strong> You can use <code>out.println(...)</code> for standard output and <code>err.println(...)</code> for error output within the script.
-  The Spring Application Context is available via the <code>spring</code> variable (e.g., <code>spring.getBean('beanName')</code>). Use with extreme caution.
-</p>
-<p style="color:red; font-weight:bold;">
-  <strong>SECURITY WARNING:</strong> This console allows arbitrary code execution.
-  DO NOT expose this endpoint publicly or without robust authentication and authorization (e.g., using Spring Security restricted to admin users).
-</p>
+      "Collections & closures": `def people = [\n  [name: "Ada",   age: 36],\n  [name: "Linus", age: 54],\n  [name: "Grace", age: 79],\n]\n\npeople.findAll { it.age > 40 }\n      .each { println "\${it.name} is \${it.age}" }\n\npeople.sum { it.age } / people.size()  // average age (return value)`,
 
+      "Pretty JSON": `import groovy.json.JsonOutput\n\ndef payload = [\n  service: "groovy-console",\n  ok: true,\n  numbers: (1..3),\n  nested: [a: 1, b: [2, 3]]\n]\n\nprintln JsonOutput.prettyPrint(JsonOutput.toJson(payload))`,
+
+      "Dates & ranges": `import java.time.*\n\ndef today = LocalDate.now()\nprintln "Today is \${today} (\${today.dayOfWeek})"\n\n(0..2).each { println "+\${it}d -> \${today.plusDays(it)}" }\n\ntoday.plusMonths(3)`,
+
+      "Output channels": `println "this goes to standard output"\nerr.println "this goes to standard error"\n[status: "see the Std error tab too"]`,
+
+      "Throw an error": `def risky() {\n  throw new IllegalStateException("Something went wrong!")\n}\nprintln "About to fail..."\nrisky()`
+    };
+
+    const root = document.documentElement;
+    const runBtn = document.getElementById('run-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const themeBtn = document.getElementById('theme-toggle');
+    const samplesSel = document.getElementById('samples');
+    const badge = document.getElementById('status-badge');
+    const statusTime = document.getElementById('status-time');
+    const statusType = document.getElementById('status-type');
+
+    // ---- editor ----
+    // Prefer CodeMirror, but fall back to a plain textarea so the console keeps
+    // working even if the editor assets fail to load.
+    const codeEl = document.getElementById('code');
+    let editor;
+    const hasCM = typeof CodeMirror !== 'undefined';
+    if (hasCM) {
+      editor = CodeMirror.fromTextArea(codeEl, {
+        mode: 'groovy',
+        theme: 'material-darker',
+        lineNumbers: true,
+        indentUnit: 4,
+        tabSize: 4,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        lineWrapping: false
+      });
+    } else {
+      // Minimal shim exposing the few CodeMirror methods we use.
+      codeEl.classList.add('plain-editor');
+      editor = {
+        getValue: () => codeEl.value,
+        setValue: (v) => { codeEl.value = v; },
+        focus: () => codeEl.focus(),
+        setOption: () => {},
+      };
+    }
+    editor.setValue(SAMPLES["Hello, Groovy"]);
+
+    // ---- theme ----
+    function applyTheme(theme) {
+      root.setAttribute('data-theme', theme);
+      if (hasCM) editor.setOption('theme', theme === 'light' ? 'default' : 'material-darker');
+      themeBtn.textContent = theme === 'light' ? '☀️' : '🌙';
+      localStorage.setItem('gc-theme', theme);
+    }
+    applyTheme(localStorage.getItem('gc-theme') || 'dark');
+    themeBtn.addEventListener('click', () => {
+      applyTheme(root.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
+    });
+
+    // ---- samples ----
+    Object.keys(SAMPLES).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      samplesSel.appendChild(opt);
+    });
+    samplesSel.addEventListener('change', () => {
+      const s = SAMPLES[samplesSel.value];
+      if (s) { editor.setValue(s); editor.focus(); }
+      samplesSel.value = '';
+    });
+
+    clearBtn.addEventListener('click', () => { editor.setValue(''); editor.focus(); });
+
+    // ---- tabs ----
+    const tabs = [...document.querySelectorAll('.tab')];
+    const panels = {
+      stdout: document.getElementById('panel-stdout'),
+      return: document.getElementById('panel-return'),
+      stderr: document.getElementById('panel-stderr'),
+      error:  document.getElementById('panel-error'),
+    };
+    function activateTab(name) {
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      Object.entries(panels).forEach(([k, el]) => el.hidden = (k !== name));
+    }
+    tabs.forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
+
+    function emptyState(msg) {
+      return `<div class="empty">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M9 15c.8.7 1.9 1 3 1s2.2-.3 3-1"/></svg>
+        <span>${msg}</span></div>`;
+    }
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ---- run ----
+    let running = false;
+    async function run() {
+      if (running) return;
+      running = true;
+      runBtn.disabled = true;
+      runBtn.querySelector('.label').innerHTML = '<span class="spinner"></span> Running';
+      badge.className = 'badge idle';
+      badge.innerHTML = '<span class="dot"></span>Running…';
+      statusTime.textContent = '';
+      statusType.textContent = '';
+
+      try {
+        const res = await fetch('/groovy/api/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script: editor.getValue() })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        render(await res.json());
+      } catch (e) {
+        badge.className = 'badge error';
+        badge.innerHTML = '<span class="dot"></span>Request failed';
+        panels.error.innerHTML = `<pre class="error-text">${escapeHtml(String(e))}</pre>`;
+        setPip('error', true);
+        activateTab('error');
+      } finally {
+        running = false;
+        runBtn.disabled = false;
+        runBtn.querySelector('.label').textContent = '▶ Run';
+      }
+    }
+
+    function setPip(tab, has) {
+      const el = tabs.find(t => t.dataset.tab === tab);
+      if (el) el.classList.toggle('has-content', has);
+    }
+
+    function render(r) {
+      // status
+      if (r.success) {
+        badge.className = 'badge success';
+        badge.innerHTML = '<span class="dot"></span>Success';
+      } else {
+        badge.className = 'badge error';
+        badge.innerHTML = '<span class="dot"></span>Failed';
+      }
+      statusTime.innerHTML = `<b>${r.executionTimeMs}</b> ms`;
+      statusType.innerHTML = r.returnType ? `returns <b>${escapeHtml(shortType(r.returnType))}</b>` : '';
+
+      // stdout
+      const hasOut = !!(r.stdout && r.stdout.length);
+      panels.stdout.innerHTML = hasOut
+        ? `<pre>${escapeHtml(r.stdout)}</pre>`
+        : emptyState('No standard output');
+      setPip('stdout', hasOut);
+
+      // return
+      const hasRet = r.returnValue !== null && r.returnValue !== undefined;
+      panels.return.innerHTML = hasRet
+        ? `<pre class="return-text"><span class="rtype">// ${escapeHtml(shortType(r.returnType))}</span>\n${escapeHtml(r.returnValue)}</pre>`
+        : emptyState('Script returned null / no value');
+      setPip('return', hasRet);
+
+      // stderr
+      const hasErr = !!(r.stderr && r.stderr.length);
+      panels.stderr.innerHTML = hasErr
+        ? `<pre>${escapeHtml(r.stderr)}</pre>`
+        : emptyState('Nothing written to err');
+      setPip('stderr', hasErr);
+
+      // exception
+      const hasEx = !!(r.error && r.error.length);
+      panels.error.innerHTML = hasEx
+        ? `<pre class="error-text">${escapeHtml(r.error)}</pre>`
+        : emptyState('No exception thrown');
+      setPip('error', hasEx);
+
+      // pick the most relevant tab automatically
+      if (hasEx) activateTab('error');
+      else if (hasOut) activateTab('stdout');
+      else if (hasRet) activateTab('return');
+      else if (hasErr) activateTab('stderr');
+      else activateTab('stdout');
+    }
+
+    function shortType(fqcn) {
+      if (!fqcn) return '';
+      return fqcn.replace(/^java\.lang\./, '').replace(/^java\.util\./, '');
+    }
+
+    runBtn.addEventListener('click', run);
+    // Ctrl/Cmd + Enter to run, from anywhere including the editor
+    if (hasCM) editor.setOption('extraKeys', { 'Cmd-Enter': run, 'Ctrl-Enter': run });
+    document.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run(); }
+    });
+
+    editor.focus();
+  </script>
 </body>
 </html>

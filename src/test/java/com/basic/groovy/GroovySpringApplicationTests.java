@@ -1,10 +1,10 @@
-package com.basic.sample;
+package com.basic.groovy;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class SampleApplicationTests {
+class GroovySpringApplicationTests {
 
 	@Test
 	void contextLoads() {
